@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>今日の言葉</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#3B3FB8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#ECEDF3;--ink:#1E2233;--sub:#5B6076;--line:#CFD3E2;--accent:#3B3FB8;--mark:#F6D84C}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.85 "Hiragino Sans","Yu Gothic",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:34rem;margin:0 auto;padding:1.5rem 1.25rem 4rem}
+#date{margin:0;color:var(--sub);font-size:.9rem}
+h1{margin:.4rem 0 1.5rem;font:700 clamp(2.4rem,11vw,3.6rem)/1.35 "Hiragino Mincho ProN","Yu Mincho",serif;word-break:keep-all;overflow-wrap:anywhere}
+h1 span{background:linear-gradient(transparent 60%,var(--mark) 60%);padding:0 .1em}
+section{border-top:1px solid var(--line);padding:1.1rem 0 1.3rem}
+h2{margin:0 0 .5rem;font-size:.95rem;color:var(--sub);font-weight:700}
+p{margin:0 0 .6rem}
+a{color:var(--accent)}
+#meaning{white-space:pre-line}
+.chip{background:#fff;color:var(--accent);border:1px solid var(--accent);padding:.35rem .8rem;margin:0 .4rem .5rem 0;border-radius:999px;font-weight:400}
+.chip[aria-pressed=true]{background:var(--accent);color:#fff;font-weight:700}
+.note{color:var(--sub);font-size:.85rem}
+textarea{width:100%;min-height:9rem;padding:.8rem;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;resize:vertical}
+button{font:inherit;font-weight:700;padding:.65rem 1.1rem;border:0;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer}
+button.off{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+#q{width:100%;padding:.6rem .8rem;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);font:inherit;margin:.6rem 0}
+#hist a{display:inline-block;margin:.3rem 0;font-size:.85rem}
+#hist details details{margin-left:1rem}
+.bar{display:flex;align-items:center;gap:.6rem;font-size:.85rem;color:var(--sub);margin:.15rem 0}
+.bar span{width:7.5rem;flex:none}.bar i{display:block;height:.6rem;background:var(--accent);border-radius:3px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+details{border-bottom:1px solid var(--line);padding:.5rem 0}
+summary{cursor:pointer}
+details p{white-space:pre-wrap;margin:.4rem 0 0}
+ul{list-style:none;margin:0;padding:0}
+</style>
+</head>
+<body>
+<main>
+  <p id="date"></p>
+  <h1><span id="word">…</span></h1>
+  <p class="note" id="yomi" style="margin:-1rem 0 1.2rem"></p>
+
+  <section>
+    <h2>意味</h2>
+    <p id="meaning">読み込み中…</p>
+    <p class="note"><a id="wl" target="_blank" rel="noopener">元の項目を開く</a></p>
+  </section>
+
+  <section>
+    <h2>この言葉の印象</h2>
+    <p id="tags"></p>
+    <textarea id="memo" placeholder="この言葉に、どんな印象がありますか？ 知らない言葉なら、字面や響きの印象でも。入力すると自動で保存されます。" aria-label="今日の言葉の印象"></textarea>
+    <p class="note" id="saved" aria-live="polite"></p>
+  </section>
+
+  <section>
+    <h2>これまでのメモ</h2>
+    <p class="note" id="stats"></p>
+    <div id="bars"></div>
+    <input id="q" type="search" placeholder="言葉やメモの内容で探す" aria-label="過去のメモを検索">
+    <p id="filters"></p>
+    <div id="hist"></div>
+    <p class="note" id="empty">印象を残すと、ここに並びます。</p>
+  </section>
+
+  <section>
+    <h2>バックアップ</h2>
+    <p><button id="exp" type="button" class="off">書き出す</button> <button id="imp" type="button" class="off">読み込む</button><input id="file" type="file" accept="application/json,.json" hidden></p>
+    <p class="note" id="bmsg">メモは、この端末の中だけに保存されています。ときどき書き出して、Googleドライブなどに保管しておくと、機種変更やデータ消去のときも安心です。</p>
+  </section>
+
+  <section>
+    <h2>通知</h2>
+    <p><button id="bell" type="button">毎朝10時に通知する</button></p>
+    <p class="note" id="nmsg"></p>
+  </section>
+</main>
+
+<script>
+let WORDS=[];
+const $=id=>document.getElementById(id), pad=n=>String(n).padStart(2,'0');
+const now=new Date(), key=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+let S={};try{S=JSON.parse(localStorage.getItem('dw')||'{}')}catch{}
+S.days=S.days||{};
+function save(){
+  for(const k in S.days)if(k!==key)for(const f of ['meaning','src','url','none','err'])delete S.days[k][f];
+  try{localStorage.setItem('dw',JSON.stringify(S))}catch{$('saved').textContent='保存できませんでした。容量がいっぱいの可能性があります。バックアップを書き出してください。'}
+}
+
+// 日付から言葉を決める：語数と互いに素な歩幅で進むので、一巡するまで重複せず、同じ日は同じ言葉
+function pick(){
+  const n=Math.floor(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())/864e5),N=WORDS.length;
+  const gcd=(a,b)=>b?gcd(b,a%b):a;
+  let step=100003;while(gcd(step,N)!==1)step+=2;
+  const [word,yomi]=WORDS[(n*step)%N].split('\t');
+  return {word,yomi:yomi||''};
+}
+function cut(t,n){t=t.trim();if(t.length<=n)return t;const i=t.lastIndexOf('。',n);return i>30?t.slice(0,i+1):t.slice(0,n)+'…'}
+
+// 意味：Wiktionary（日本語版）を優先し、なければWikipedia
+const wt=x=>x.replace(/\{\{[^{}]*\}\}/g,'').replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g,'$1').replace(/'{2,}/g,'').replace(/<[^>]+>/g,'').trim();
+async function info(w){
+  const e=encodeURIComponent(w);
+  try{
+    const r=await fetch(`https://ja.wiktionary.org/w/api.php?origin=*&format=json&redirects=1&action=parse&prop=wikitext&page=${e}`).then(r=>r.json());
+    const t=(r.parse&&r.parse.wikitext['*'])||'',i=t.indexOf('==日本語==');
+    const sec=i<0?'':t.slice(i+7).split(/\n==[^=]/)[0],defs=[];
+    for(const l of sec.split('\n')){const m=l.match(/^#\s+(.+)/);if(m){const d=wt(m[1]);if(d.length>1)defs.push(d)}}
+    if(defs.length)return {meaning:defs.slice(0,4).map((d,i)=>defs.length>1?`${i+1}. ${d}`:d).join('\n'),src:'Wiktionary',url:`https://ja.wiktionary.org/wiki/${e}`};
+  }catch{}
+  const s=await fetch(`https://ja.wikipedia.org/api/rest_v1/page/summary/${e}`).then(r=>r.json());
+  if(s.extract&&s.type!=='disambiguation')return {meaning:cut(s.extract,300),src:'Wikipedia',url:s.content_urls.desktop.page};
+  return {};
+}
+
+function draw(){
+  const d=S.days[key],e=encodeURIComponent(d.word);
+  $('date').textContent=now.toLocaleDateString('ja-JP',{month:'long',day:'numeric',weekday:'long'});
+  $('word').textContent=d.word;$('yomi').textContent=d.yomi||'';
+  $('meaning').textContent=d.meaning||(d.none?'WiktionaryにもWikipediaにも項目がありませんでした。字面や響きの印象でも、メモできます。':(d.err?'取得できませんでした。通信状態を確認して、開き直してください。':'読み込み中…'));
+  $('wl').href=d.url||`https://ja.wiktionary.org/w/index.php?search=${e}`;
+  $('wl').textContent=d.src?`${d.src}で開く`:'Wiktionaryで検索する';
+}
+
+const TAGS=['好き','苦手','懐かしい','気になる','初めて知った'];
+function tags(){
+  const box=$('tags');box.textContent='';
+  for(const t of TAGS){
+    const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=t;b.setAttribute('aria-pressed',S.days[key].tag===t);
+    b.onclick=()=>{const d=S.days[key];d.tag=d.tag===t?'':t;save();tags();history()};box.append(b);
+  }
+}
+
+let filter='all';
+const has=d=>(d.memo||'').trim()||d.tag;
+function chips(){
+  const box=$('filters');box.textContent='';
+  for(const [v,l] of [['all','すべて'],['memo','メモあり'],...TAGS.map(t=>[t,t])]){
+    const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=l;b.setAttribute('aria-pressed',filter===v);
+    b.onclick=()=>{filter=v;chips();history()};box.append(b);
+  }
+}
+function stats(){
+  const ds=Object.values(S.days).filter(has),box=$('bars');box.textContent='';
+  $('stats').textContent=ds.length?`記録した日：${ds.length}日（うちメモあり${ds.filter(d=>(d.memo||'').trim()).length}日）`:'';
+  const cnt=TAGS.map(t=>ds.filter(d=>d.tag===t).length),max=Math.max(1,...cnt);
+  if(ds.length)TAGS.forEach((t,i)=>{
+    const r=document.createElement('div'),l=document.createElement('span'),b=document.createElement('i');
+    r.className='bar';l.textContent=`${t} ${cnt[i]}`;b.style.width=(cnt[i]/max*100)+'%';r.append(l,b);box.append(r);
+  });
+}
+function history(){
+  const q=$('q').value.trim().toLowerCase(),box=$('hist');box.textContent='';
+  const all=Object.keys(S.days).filter(k=>k!==key&&has(S.days[k])).sort().reverse();
+  const ks=all.filter(k=>{
+    const d=S.days[k];
+    if(filter==='memo'&&!(d.memo||'').trim())return false;
+    if(filter!=='all'&&filter!=='memo'&&d.tag!==filter)return false;
+    return !q||((d.word||'')+(d.yomi||'')+(d.memo||'')).toLowerCase().includes(q);
+  });
+  $('empty').hidden=ks.length>0;
+  $('empty').textContent=all.length?'条件に合う記録がありません。':'印象を残すと、ここに並びます。';
+  const by={};for(const k of ks)(by[k.slice(0,7)]=by[k.slice(0,7)]||[]).push(k);
+  Object.keys(by).sort().reverse().forEach((m,i)=>{
+    const mo=document.createElement('details'),sm=document.createElement('summary');
+    mo.open=i===0||!!q||filter!=='all';sm.style.fontWeight='700';
+    sm.textContent=`${m.slice(0,4)}年${+m.slice(5)}月（${by[m].length}件）`;mo.append(sm);
+    for(const k of by[m]){
+      const d=S.days[k],dt=document.createElement('details'),s2=document.createElement('summary'),p=document.createElement('p'),a=document.createElement('a');
+      s2.textContent=`${+k.slice(8)}日　${d.word}${d.tag?'　［'+d.tag+'］':''}`;p.textContent=d.memo||'（メモなし）';
+      a.href=`https://ja.wiktionary.org/w/index.php?search=${encodeURIComponent(d.word)}`;a.textContent='意味を調べる';a.target='_blank';a.rel='noopener';
+      dt.append(s2,p,a);mo.append(dt);
+    }
+    box.append(mo);
+  });
+  stats();
+}
+$('q').addEventListener('input',history);
+
+// バックアップ
+$('exp').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'daily-word',v:1,days:S.days})],{type:'application/json'}));
+  a.download=`words-backup-${key}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1e4);
+  $('bmsg').textContent='書き出しました。ダウンロードしたファイルを、Googleドライブなどに保管してください。';
+};
+$('imp').onclick=()=>$('file').click();
+$('file').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());if(!j.days||typeof j.days!=='object')throw 0;
+    let add=0,upd=0;
+    for(const [k,d] of Object.entries(j.days)){
+      if(!d||!d.word)continue;
+      const l=S.days[k],memo=String(d.memo||''),tag=String(d.tag||'');
+      if(!l){S.days[k]={word:String(d.word),yomi:String(d.yomi||''),memo,tag};add++}
+      else if(!has(l)&&(memo.trim()||tag)){l.memo=memo;l.tag=tag;upd++}
+    }
+    save();$('memo').value=S.days[key].memo||'';tags();history();
+    $('bmsg').textContent=`読み込みました（追加${add}日、更新${upd}日）。同じ日に、すでに記録がある場合は、今の記録を残しています。`;
+  }catch{$('bmsg').textContent='読み込めませんでした。書き出したバックアップファイルを選んでください。'}
+  e.target.value='';
+};
+
+// メモ：入力のたびに端末内へ自動保存
+let timer;
+$('memo').addEventListener('input',e=>{
+  clearTimeout(timer);
+  timer=setTimeout(()=>{S.days[key].memo=e.target.value;save();$('saved').textContent='保存しました';history()},500);
+});
+
+// 通知
+let fireTimer;
+const canNotify='Notification' in window && 'serviceWorker' in navigator;
+function bell(){
+  const on=S.notify&&canNotify&&Notification.permission==='granted';
+  $('bell').textContent=on?'通知をオフにする':'毎朝10時に通知する';
+  $('bell').className=on?'off':'';
+  $('nmsg').textContent=!canNotify
+    ?'iPhoneでは、共有ボタンから「ホーム画面に追加」し、ホーム画面のアイコンから開くと通知を設定できます。'
+    :'アプリを開いている間は10時ちょうどに届きます。閉じている間は、Android版Chromeでのみ1日1回（時刻は端末任せ）届きます。';
+}
+async function toast(){
+  const reg=await navigator.serviceWorker.ready,d=S.days[key];
+  reg.showNotification('今日の言葉：'+d.word,{body:cut(d.meaning||'タップして意味と議論を見る',60),icon:'icon-192.png',tag:'daily'});
+}
+function schedule(){
+  clearTimeout(fireTimer);
+  if(!(S.notify&&canNotify&&Notification.permission==='granted'))return;
+  const t=new Date();t.setHours(10,0,0,0);
+  if(now<t)fireTimer=setTimeout(toast,t-now);
+}
+$('bell').addEventListener('click',async()=>{
+  if(!canNotify){bell();return}
+  if(S.notify){S.notify=false;save();bell();schedule();return}
+  const p=await Notification.requestPermission();
+  if(p!=='granted'){$('nmsg').textContent='通知が許可されていません。ブラウザまたは端末の設定で、このアプリの通知を許可してください。';return}
+  S.notify=true;save();
+  try{const reg=await navigator.serviceWorker.ready;await reg.periodicSync.register('daily-word',{minInterval:864e5})}catch{}
+  bell();schedule();
+});
+
+async function init(){
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  bell();
+  let d=S.days[key];
+  if(!d){
+    try{WORDS=(await (await fetch('words.txt')).text()).split('\n').filter(Boolean)}
+    catch{$('meaning').textContent='語彙リスト(words.txt)を読み込めませんでした。通信状態を確認して、開き直してください。';return}
+    d=S.days[key]=pick();save();
+  }
+  $('memo').value=d.memo||'';
+  tags();chips();draw();history();schedule();
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+  if(!d.meaning&&!d.none){
+    try{const r=await info(d.word);if(r.meaning)Object.assign(d,r);else d.none=1;delete d.err;save()}catch{d.err=1}
+    draw();
+  }
+}
+init();
+</script>
+</body>
+</html>
